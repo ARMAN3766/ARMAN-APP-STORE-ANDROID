@@ -1,1 +1,52 @@
-build-apk.yml 
+name: Build Debug APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+
+      - name: Unpack project.zip
+        id: p
+        run: |
+          mkdir -p work
+          unzip -q project.zip -d work
+          F=$(find work -name settings.gradle.kts | head -1)
+          echo "dir=$(dirname "$F")" >> "$GITHUB_OUTPUT"
+
+      - name: Build debug APK
+        working-directory: ${{ steps.p.outputs.dir }}
+        run: gradle assembleDebug --stacktrace
+
+      - name: Prepare release file
+        id: rel
+        working-directory: ${{ steps.p.outputs.dir }}
+        run: |
+          VER=$(grep -m1 'versionName' app/build.gradle.kts | sed 's/.*"\(.*\)".*/\1/')
+          cp app/build/outputs/apk/debug/app-debug.apk ARMAN-APP-STORE.apk
+          echo "ver=$VER" >> "$GITHUB_OUTPUT"
+          echo "file=$PWD/ARMAN-APP-STORE.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.rel.outputs.ver }}
+          name: ARMAN APP STORE ${{ steps.rel.outputs.ver }}
+          files: ${{ steps.rel.outputs.file }}
